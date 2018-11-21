@@ -53,7 +53,7 @@ jobs:
     - save_cache: *save-server-node-modules
 
   build:
-    *node-build-job
+    <<: *node-build-job
     steps:
     - run: *install-latest-npm
     - run: *build-app
