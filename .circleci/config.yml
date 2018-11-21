@@ -1,0 +1,69 @@
+version: 2.1
+
+defaults: &node-build-job
+  docker:
+  - image: circleci/node:8.12.0
+  working_directory: ~/project
+
+aliases:
+- &node-image
+  - image: circleci/node:8.12.0
+- &install-latest-npm
+  name: install latest npm
+  command: 'sudo npm install -g npm@latest'
+
+- &restore-node-modules
+  key: node-modules-cache-{{ checksum "package.json" }}
+- &save-node-modules
+  key: node-modules-cache-{{ checksum "package.json" }}
+  paths:
+  - ./node_modules
+- &restore-server-node-modules
+  key: server-node-modules-cache-{{ checksum "server/package.json" }}
+- &save-server-node-modules
+  key: server-node-modules-cache-{{ checksum "server/package.json" }}
+  paths:
+  - ./server/node_modules
+
+- &npm-install
+  name: npm install
+  command: npm install
+- &server-npm-install
+  name: npm install
+  command: npm install server/package.json
+
+- &build-app
+  name: build app
+  command: GENERATE_SOURCEMAP=true IMAGE_TAG=$CIRCLE_BRANCH-v$CIRCLE_BUILD_NUM npm run-script build
+- &test-app
+  name: test app
+  command: CI=true npm run-script test
+
+jobs:
+  dependencies:
+    <<: *node-build-job
+    steps:
+    - checkout
+    - run: *install-latest-npm
+    - restore_cache: *restore-node-modules
+    - restore_cache: *restore-server-node-modules
+    - run: *npm-install
+    - run: *server-npm-install
+    - save_cache: *save-node-modules
+    - save_cache: *save-server-node-modules
+
+  build:
+    *node-build-job
+    steps:
+    - run: *install-latest-npm
+    - run: *build-app
+    - run: *test-app
+
+workflows:
+  version: 2
+  build-test-push:
+    jobs:
+    - dependencies
+    - build
+        requires:
+        - dependencies
