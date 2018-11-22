@@ -103,7 +103,8 @@
     "start": "npm-run-all -p build-messages watch-messages watch-css start-js",
     "start-devenv": "cross-env npm run start",
     "build": "npm-run-all build-css build-messages build-js",
-    "eslint": "eslint src/**/*.js"
+    "eslint": "eslint src/**/*.js",
+    "postinstall": "cd server && npm install && cd .."
   },
   "jest": {
     "collectCoverageFrom": [
