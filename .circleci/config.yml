@@ -1,12 +1,12 @@
 version: 2.1
 
 aliases:
-
 - &node-build-container
+  working_directory = ~/project
   docker:
-    - image: circleci/node:8.12.0
-      environment:
-        TERM: dumb
+  - image: circleci/node:8.12.0
+    environment:
+      TERM: dumb
 - &google-sdk-container
   docker:
   - image: google/cloud-sdk:225.0.0-alpine
@@ -14,94 +14,111 @@ aliases:
       TERM: dumb
 
 - &restore-node-modules
-  keys:
-    - node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
-    - node-modules-cache-{{ checksum "server/package.json" }}
-    - node-modules-cache
+  restore_cache:
+    keys:
+      - node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
+      - node-modules-cache-{{ checksum "server/package.json" }}
+      - node-modules-cache
 - &save-node-modules
-  key: node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
-  paths:
-    - ./node_modules
-    - ./server/node_modules
+  save_cache:
+    key: node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
+    paths:
+      - ./node_modules
+      - ./server/node_modules
 
 - &npm-install
-  name: npm install
-  command: npm install
+  run:
+    name: npm install
+    command: npm install
 
 - &next-image-tag
-  name: docker image name
-  command: |
-    imageName="eu.gcr.io/$CLOUDSDK_CORE_PROJECT/$CIRCLE_PROJECT_REPONAME"
-    lastImage=$(gcloud container images list-tags $imageName --filter="tags:$CIRCLE_BRANCH-v*" --format='get(tags)' --limit 1)
-    nextVersion=$(($(echo $lastImage | grep -o '[0-9]*$')+1))
-    imageTag="$CIRCLE_BRANCH-v$nextVersion"
-    echo "export VERSION=$nextVersion"  >> $BASH_ENV
-    echo "export TAGGED_IMAGE_NAME=$imageName:$imageTag"  >> $BASH_ENV
+  run:
+    name: docker image name
+    command: |
+      imageName="eu.gcr.io/$CLOUDSDK_CORE_PROJECT/$CIRCLE_PROJECT_REPONAME"
+      lastImage=$(gcloud container images list-tags $imageName --filter="tags:$CIRCLE_BRANCH-v*" --format='get(tags)' --limit 1)
+      nextVersion=$(($(echo $lastImage | grep -o '[0-9]*$')+1))
+      imageTag="$CIRCLE_BRANCH-v$nextVersion"
+      echo "export VERSION=$nextVersion"  >> $BASH_ENV
+      echo "export TAGGED_IMAGE_NAME=$imageName:$imageTag"  >> $BASH_ENV
 
 - &build-app
-  name: build app
-  command: GENERATE_SOURCEMAP=true npm run-script build
+  run:
+    name: build app
+    command: GENERATE_SOURCEMAP=true npm run-script build
 
 - &test-app
-  name: test app
-  command: CI=true npm run-script test
+  run:
+    name: test app
+    command: CI=true npm run-script test
+
+- &persist-build-workspace
+  persist_to_workspace:
+    root: ~/
+    paths:
+      - project
+- &attach-build-workspace
+  attach_workspace:
+    at: ~/
 
 - &gcp-auth
-  name: GCP Authentication
-  command: |
-    echo $GCLOUD_SERVICE_KEY > ${HOME}/account-auth.json
-    gcloud auth activate-service-account --key-file ${HOME}/account-auth.json
-    gcloud --quiet container clusters get-credentials $CLOUDSDK_CONTAINER_CLUSTER
+  run:
+    name: GCP Authentication
+    command: |
+      echo $GCLOUD_SERVICE_KEY > ${HOME}/account-auth.json
+      gcloud auth activate-service-account --key-file ${HOME}/account-auth.json
+      gcloud --quiet container clusters get-credentials $CLOUDSDK_CONTAINER_CLUSTER
 
 - &docker-build
-  name: Docker image build
-  command: docker build -t $TAGGED_IMAGE_NAME .
+  run:
+    name: Docker image build
+    command: docker build -t $TAGGED_IMAGE_NAME .
 - &docker-push
-  name: Docker push
-  command: |
-    mkdir -p ~/circleci/.docker && echo -e "{"auths" : { "https://eu.gcr.io" : {} }}" > ~/circleci/.docker/config.json
-    docker login -u _json_key --password-stdin https://eu.gcr.io < ${HOME}/account-auth.json
-    docker push $TAGGED_IMAGE_NAME
+  run:
+    name: Docker push
+    command: |
+      mkdir -p ~/circleci/.docker && echo -e "{"auths" : { "https://eu.gcr.io" : {} }}" > ~/circleci/.docker/config.json
+      docker login -u _json_key --password-stdin https://eu.gcr.io < ${HOME}/account-auth.json
+      docker push $TAGGED_IMAGE_NAME
 - &git-tag
-  name: Git tag
-  command: |
-    tag=v${VERSION}
-    git tag ${tag}
-    git push origin ${tag}
+  run:
+    name: Git tag
+    command: |
+      tag=v${VERSION}
+      git tag ${tag}
+      git push origin ${tag}
 
 jobs:
-  dependencies:
-    <<: *node-build-container
-    steps:
-      - checkout
-      - restore_cache: *restore-node-modules
-      - run: *npm-install
-      - save_cache: *save-node-modules
-
   app-build:
     <<: *node-build-container
     steps:
-      - run: *build-app
-      - run: *test-app
+    - checkout
+
+    - *restore-node-modules
+    - *npm-install
+    - *save-node-modules
+
+    - *build-app
+    - *test-app
+
+    - *persist-build-workspace
 
   docker-image-git-tag:
     <<: *google-sdk-container
     steps:
-      - run: *gcp-auth
-      - run: *next-image-tag
-      - run: *docker-build
-      - run: *docker-push
-      - run: *git-tag
+    - *attach-build-workspace
+    - *gcp-auth
+    - *next-image-tag
+    - *docker-build
+    - *docker-push
+    - *git-tag
 
 workflows:
   version: 2
   main:
     jobs:
-      - dependencies
-      - app-build:
-          requires:
-            - dependencies
-      - docker-image-git-tag:
-          context: org-carbon
-          requires:
-            - app-build
+    - app-build
+    - docker-image-git-tag:
+        context: org-carbon
+        requires:
+        - app-build
