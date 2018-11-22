@@ -4,9 +4,9 @@ aliases:
 
 - &node-build-container
   docker:
-  - image: circleci/node:8.12.0
-    environment:
-      TERM: dumb
+    - image: circleci/node:8.12.0
+      environment:
+        TERM: dumb
   working_directory: ~/project
 - &google-sdk-container
   docker:
@@ -20,14 +20,14 @@ aliases:
 
 - &restore-node-modules
   keys:
-  - node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
-  - node-modules-cache-{{ checksum "server/package.json" }}
-  - node-modules-cache
+    - node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
+    - node-modules-cache-{{ checksum "server/package.json" }}
+    - node-modules-cache
 - &save-node-modules
   key: node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
   paths:
-  - ./node_modules
-  - ./server/node_modules
+    - ./node_modules
+    - ./server/node_modules
 
 - &npm-install
   name: npm install
@@ -80,37 +80,37 @@ jobs:
   dependencies:
     <<: *node-build-container
     steps:
-    - checkout
-    - run: *install-latest-npm
-    - restore_cache: *restore-node-modules
-    - run: *npm-install
-    - save_cache: *save-node-modules
+      - checkout
+      - run: *install-latest-npm
+      - restore_cache: *restore-node-modules
+      - run: *npm-install
+      - save_cache: *save-node-modules
 
   app-build:
     <<: *node-build-container
     steps:
-    - run: *install-latest-npm
-    - run: *build-app
-    - run: *test-app
+      - run: *install-latest-npm
+      - run: *build-app
+      - run: *test-app
 
   docker-image-git-tag:
     <<: *google-sdk-container
     steps:
-    - run: *gcp-auth
-    - run: *next-image-tag
-    - run: *docker-build
-    - run: *docker-push
-    - run: *git-tag
+      - run: *gcp-auth
+      - run: *next-image-tag
+      - run: *docker-build
+      - run: *docker-push
+      - run: *git-tag
 
 workflows:
   main:
     jobs:
-    - build
-    - dependencies
-    - app-build
-        requires:
-        - dependencies
-    - docker-image-git-tag
-        context: org-carbon
-        requires:
-        - app-build
+      - build
+      - dependencies
+      - app-build
+          requires:
+            - dependencies
+      - docker-image-git-tag
+          context: org-carbon
+          requires:
+            - app-build
