@@ -14,10 +14,6 @@ aliases:
     environment:
       TERM: dumb
 
-- &install-latest-npm
-  name: install latest npm
-  command: 'npm install -g npm@latest'
-
 - &restore-node-modules
   keys:
     - node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
@@ -88,7 +84,6 @@ jobs:
   app-build:
     <<: *node-build-container
     steps:
-      - run: *install-latest-npm
       - run: *build-app
       - run: *test-app
 
