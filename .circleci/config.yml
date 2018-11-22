@@ -7,7 +7,6 @@ aliases:
     - image: circleci/node:8.12.0
       environment:
         TERM: dumb
-  working_directory: ~/project
 - &google-sdk-container
   docker:
   - image: google/cloud-sdk:225.0.0-alpine
