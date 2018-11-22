@@ -81,7 +81,6 @@ jobs:
     <<: *node-build-container
     steps:
       - checkout
-      - run: *install-latest-npm
       - restore_cache: *restore-node-modules
       - run: *npm-install
       - save_cache: *save-node-modules
