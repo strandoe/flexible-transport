@@ -16,7 +16,7 @@ aliases:
 
 - &install-latest-npm
   name: install latest npm
-  command: 'sudo npm install -g npm@latest'
+  command: 'npm install -g npm@latest'
 
 - &restore-node-modules
   keys:
@@ -32,8 +32,8 @@ aliases:
 - &npm-install
   name: npm install
   command: |
-    sudo npm install
-    sudo npm install server/package.json
+    npm install
+    npm install server/package.json
 
 - &next-image-tag
   name: docker image name
