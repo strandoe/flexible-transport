@@ -106,7 +106,6 @@ workflows:
   version: 2
   main:
     jobs:
-      - build
       - dependencies
       - app-build:
           requires:
