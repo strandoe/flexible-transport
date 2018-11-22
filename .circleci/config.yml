@@ -103,14 +103,15 @@ jobs:
       - run: *git-tag
 
 workflows:
+  version: 2
   main:
     jobs:
       - build
       - dependencies
-      - app-build
+      - app-build:
           requires:
             - dependencies
-      - docker-image-git-tag
+      - docker-image-git-tag:
           context: org-carbon
           requires:
             - app-build
