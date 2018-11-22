@@ -108,9 +108,9 @@ workflows:
     - build
     - dependencies
     - app-build
-      requires:
-      - dependencies
+        requires:
+        - dependencies
     - docker-image-git-tag
-      context: org-carbon
-      requires:
-      - app-build
+        context: org-carbon
+        requires:
+        - app-build
