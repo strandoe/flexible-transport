@@ -2,7 +2,7 @@ version: 2.1
 
 aliases:
 - &node-build-container
-  working_directory = ~/project
+  working_directory: ~/project
   docker:
   - image: circleci/node:8.12.0
     environment:
