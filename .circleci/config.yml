@@ -32,8 +32,8 @@ aliases:
 - &npm-install
   name: npm install
   command: |
-    npm install
-    npm install server/package.json
+    sudo npm install
+    sudo npm install server/package.json
 
 - &next-image-tag
   name: docker image name
