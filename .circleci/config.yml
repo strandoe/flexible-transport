@@ -111,6 +111,6 @@ workflows:
       requires:
       - dependencies
     - docker-image-git-tag
-      context: org-default-build
+      context: org-carbon
       requires:
       - app-build
