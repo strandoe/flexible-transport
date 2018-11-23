@@ -16,12 +16,12 @@ aliases:
 - &restore-node-modules
   restore_cache:
     keys:
-      - node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
-      - node-modules-cache-{{ checksum "server/package.json" }}
-      - node-modules-cache
+      - node-modules-cache-{{ .Environment.CACHE_VERSION }}-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
+      - node-modules-cache-{{ .Environment.CACHE_VERSION }}-{{ checksum "server/package.json" }}
+      - node-modules-cache-{{ .Environment.CACHE_VERSION }}
 - &save-node-modules
   save_cache:
-    key: node-modules-cache-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
+    key: node-modules-cache-{{ .Environment.CACHE_VERSION }}-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
     paths:
       - ./node_modules
       - ./server/node_modules
