@@ -67,7 +67,7 @@ aliases:
     command: |
       echo $GCLOUD_SERVICE_KEY > ${HOME}/account-auth.json
       gcloud auth activate-service-account --key-file ${HOME}/account-auth.json
-      gcloud --quiet container clusters get-credentials $CLOUDSDK_CONTAINER_CLUSTER --zone $CLOUDSDK_COMPUTE_ZONE
+      gcloud --quiet container clusters get-credentials $CLOUDSDK_CONTAINER_CLUSTER --zone europe-west1-d
 
 - &docker-build
   run:
