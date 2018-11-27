@@ -1,6 +1,6 @@
 version: 2.1
 
-aliases:
+container-anchors:
 - &node-build-container
   working_directory: ~/project
   docker:
@@ -9,31 +9,62 @@ aliases:
       TERM: dumb
 - &google-sdk-container
   docker:
-  - image: google/cloud-sdk:225.0.0-alpine
+  - image: google/cloud-sdk:226.0.0
     environment:
       TERM: dumb
 
+dependency-anchors:
 - &restore-node-modules
   restore_cache:
     keys:
-      - node-modules-cache-{{ .Environment.CACHE_VERSION }}-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
-      - node-modules-cache-{{ .Environment.CACHE_VERSION }}-{{ checksum "server/package.json" }}
-      - node-modules-cache-{{ .Environment.CACHE_VERSION }}
+    - node-modules-cache-{{ .Environment.CACHE_VERSION }}-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
+    - node-modules-cache-{{ .Environment.CACHE_VERSION }}-{{ checksum "server/package.json" }}-
+    - node-modules-cache-{{ .Environment.CACHE_VERSION }}-
 - &save-node-modules
   save_cache:
     key: node-modules-cache-{{ .Environment.CACHE_VERSION }}-{{ checksum "server/package.json" }}-{{ checksum "package.json" }}
     paths:
-      - ./node_modules
-      - ./server/node_modules
+    - ./node_modules
+    - ./server/node_modules
 
 - &npm-install
   run:
     name: npm install
     command: npm install
 
+workspace-anchors:
+- &persist-build-workspace
+  persist_to_workspace:
+    root: ~/
+    paths:
+    - project
+- &attach-build-workspace
+  attach_workspace:
+    at: ~/
+
+app-build-anchors:
+- &build-app
+  run:
+    name: build app
+    command: CI=false GENERATE_SOURCEMAP=false npm run-script build
+- &test-app
+  run:
+    name: test app
+    command: CI=true npm run-script test
+
+gcp-anchors:
+- &gcp-auth
+  run:
+    name: GCP Authentication
+    command: |
+      echo $GCLOUD_SERVICE_KEY > ${HOME}/account-auth.json
+      gcloud auth activate-service-account --key-file ${HOME}/account-auth.json
+      gcloud --quiet container clusters get-credentials $CLOUDSDK_CONTAINER_CLUSTER
+
+docker-build-anchors:
 - &next-image-tag
   run:
-    name: docker image name
+    name: Docker image name
     command: |
       imageName="eu.gcr.io/$CLOUDSDK_CORE_PROJECT/$CIRCLE_PROJECT_REPONAME"
       lastImage=$(gcloud container images list-tags $imageName --filter="tags:$CIRCLE_BRANCH-v*" --format='get(tags)' --limit 1)
@@ -41,84 +72,99 @@ aliases:
       imageTag="$CIRCLE_BRANCH-v$nextVersion"
       echo "export VERSION=$nextVersion"  >> $BASH_ENV
       echo "export TAGGED_IMAGE_NAME=$imageName:$imageTag"  >> $BASH_ENV
-
-- &build-app
-  run:
-    name: build app
-    command: GENERATE_SOURCEMAP=true npm run-script build
-
-- &test-app
-  run:
-    name: test app
-    command: CI=true npm run-script test
-
-- &persist-build-workspace
-  persist_to_workspace:
-    root: ~/
-    paths:
-      - project
-- &attach-build-workspace
-  attach_workspace:
-    at: ~/
-
-- &gcp-auth
-  run:
-    name: GCP Authentication
-    command: |
-      echo $GCLOUD_SERVICE_KEY > ${HOME}/account-auth.json
-      gcloud auth activate-service-account --key-file ${HOME}/account-auth.json
-      gcloud --quiet container clusters get-credentials $CLOUDSDK_CONTAINER_CLUSTER --zone europe-west1-d
-
+- &docker-setup
+  setup_remote_docker:
+    docker_layer_caching: true
 - &docker-build
   run:
     name: Docker image build
     command: docker build -t $TAGGED_IMAGE_NAME .
 - &docker-push
   run:
-    name: Docker push
+    name: Docker image push
     command: |
       mkdir -p ~/circleci/.docker && echo -e "{"auths" : { "https://eu.gcr.io" : {} }}" > ~/circleci/.docker/config.json
       docker login -u _json_key --password-stdin https://eu.gcr.io < ${HOME}/account-auth.json
+      echo "Pushing $TAGGED_IMAGE_NAME"
       docker push $TAGGED_IMAGE_NAME
-- &git-tag
+
+repo-anchors:
+- &ssh-keys
+  add_ssh_keys:
+    fingerprints:
+    - $SSH_FINGERPRINT
+- &helm-git-tag
   run:
-    name: Git tag
+    name: Update helm chart / tag git
     command: |
-      tag=v${VERSION}
-      git tag ${tag}
-      git push origin ${tag}
+      if [ "$CIRCLE_BRANCH" == "master" ]; then
+        HELM_VER="helm-v2.10.0-linux-amd64"
+        curl -L -o /tmp/$HELM_VER.tar.gz https://storage.googleapis.com/kubernetes-helm/$HELM_VER.tar.gz
+        tar -zxv -C /tmp -f /tmp/$HELM_VER.tar.gz
+        mv /tmp/linux-amd64/helm /usr/local/bin/helm
+        helm init --client-only
+        helm plugin install https://github.com/viglesiasce/helm-gcs.git --version v0.2.0
+        helm repo add entur-rtd-repo gs://entur-helm-charts
+
+        CHART_NAME=order-transport-chart
+        GIT_TAG=$CIRCLE_BRANCH-v$VERSION
+
+        sed -i "s/version:.*$/version: '$VERSION'/g"  ./$CHART_NAME/Chart.yaml
+        sed -i "s/appVersion:.*$/appVersion: '$GIT_TAG'/g"  ./$CHART_NAME/Chart.yaml
+        sed -i "s/imageTag:.*$/imageTag: '$GIT_TAG'/g"  ./$CHART_NAME/values.yaml
+
+        helm package ./$CHART_NAME
+        helm gcs push $CHART_NAME-$VERSION.tgz gs://entur-helm-charts
+
+        ssh-keyscan -t rsa -H bitbucket.org >> ~/.ssh/known_hosts
+
+        git config --global user.email "circleci@entur.org" && git config --global user.name "EnturCircleCi"
+        git add $CHART_NAME/Chart.yaml $CHART_NAME/values.yaml
+        git commit -m "Helm Update [ci skip]"
+
+        git tag -a $GIT_TAG -m "Updated Tag"
+        git push
+        git push origin $GIT_TAG
+      fi
 
 jobs:
   app-build:
     <<: *node-build-container
     steps:
     - checkout
-
     - *restore-node-modules
     - *npm-install
     - *save-node-modules
-
     - *build-app
     - *test-app
-
     - *persist-build-workspace
 
-  docker-image-git-tag:
+  docker-gittag-helm:
     <<: *google-sdk-container
     steps:
+    - *ssh-keys
     - *attach-build-workspace
+
     - *gcp-auth
     - *next-image-tag
+
+    - *docker-setup
     - *docker-build
     - *docker-push
-    - *git-tag
+
+    - *helm-git-tag
 
 workflows:
   version: 2
   main:
     jobs:
     - app-build
-    - docker-image-git-tag:
-        context: org-carbon
+    - docker-gittag-helm:
         requires:
         - app-build
+        context: org-carbon
+        filters:
+          branches:
+            only:
+            - master
+            - /feature-.*/
